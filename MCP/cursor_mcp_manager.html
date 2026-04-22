@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cursor MCP 服务器管理</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .card {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-online {
+            background: #10B981;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        
+        .status-offline {
+            background: #EF4444;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }
+        
+        .terminal {
+            background: #1E293B;
+            color: #F8FAFC;
+            font-family: 'Courier New', monospace;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+        
+        .terminal-header {
+            background: #334155;
+            padding: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .terminal-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        
+        .dot-red {
+            background: #EF4444;
+        }
+        
+        .dot-yellow {
+            background: #F59E0B;
+        }
+        
+        .dot-green {
+            background: #10B981;
+        }
+        
+        .terminal-body {
+            padding: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .command-input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #F8FAFC;
+            width: 100%;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .tool-card {
+            transition: all 0.3s ease;
+        }
+        
+        .tool-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- 头部 -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-white mb-2">Cursor MCP 服务器管理</h1>
+            <p class="text-xl text-white/80">管理你的 UtilityServer 并测试 MCP 工具</p>
+        </div>
+        
+        <!-- 主内容 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 服务器状态 -->
+            <div class="lg:col-span-1">
+                <div class="card rounded-xl p-6 shadow-lg">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold text-gray-800">服务器状态</h2>
+                        <div class="flex items-center gap-2">
+                            <span id="status-indicator" class="status-indicator status-offline"></span>
+                            <span id="status-text" class="font-medium text-gray-700">离线</span>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between p-3 bg-gray-100 rounded-lg">
+                            <span class="font-medium">服务名称</span>
+                            <span class="font-semibold">UtilityServer</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-3 bg-gray-100 rounded-lg">
+                            <span class="font-medium">传输方式</span>
+                            <span class="font-semibold">stdio</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-3 bg-gray-100 rounded-lg">
+                            <span class="font-medium">启动时间</span>
+                            <span id="start-time" class="font-semibold">未启动</span>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-3 bg-gray-100 rounded-lg">
+                            <span class="font-medium">运行时间</span>
+                            <span id="uptime" class="font-semibold">0秒</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 space-y-3">
+                        <button id="start-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200">
+                            启动服务
+                        </button>
+                        <button id="stop-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            停止服务
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 系统信息 -->
+                <div class="card rounded-xl p-6 shadow-lg mt-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">系统信息</h2>
+                    <div id="system-info" class="space-y-2">
+                        <div class="flex items-center justify-between p-2">
+                            <span class="text-gray-600">平台</span>
+                            <span id="sys-platform" class="font-medium">加载中...</span>
+                        </div>
+                        <div class="flex items-center justify-between p-2">
+                            <span class="text-gray-600">CPU</span>
+                            <span id="sys-cpu" class="font-medium">加载中...</span>
+                        </div>
+                        <div class="flex items-center justify-between p-2">
+                            <span class="text-gray-600">内存</span>
+                            <span id="sys-memory" class="font-medium">加载中...</span>
+                        </div>
+                        <div class="flex items-center justify-between p-2">
+                            <span class="text-gray-600">磁盘</span>
+                            <span id="sys-disk" class="font-medium">加载中...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 工具测试 -->
+            <div class="lg:col-span-2">
+                <div class="card rounded-xl p-6 shadow-lg">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">工具测试</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- 文本处理工具 -->
+                        <div class="tool-card bg-blue-50 p-4 rounded-lg">
+                            <h3 class="font-semibold text-lg mb-3">文本处理</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">输入文本</label>
+                                    <textarea id="text-input" rows="3" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">操作</label>
+                                    <select id="text-action" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                        <option value="stats">文本统计</option>
+                                        <option value="hash">计算哈希</option>
+                                        <option value="replace">查找替换</option>
+                                    </select>
+                                </div>
+                                <button id="text-execute" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200">
+                                    执行
+                                </button>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">结果</label>
+                                    <div id="text-result" class="w-full p-2 border border-gray-300 rounded-md bg-white min-h-[100px]"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 数学计算工具 -->
+                        <div class="tool-card bg-green-50 p-4 rounded-lg">
+                            <h3 class="font-semibold text-lg mb-3">数学计算</h3>
+                            <div class="space-y-3">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">第一个数</label>
+                                        <input type="number" id="num1" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">第二个数</label>
+                                        <input type="number" id="num2" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">运算符</label>
+                                    <select id="operator" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
+                                        <option value="+">+</option>
+                                        <option value="-">-</option>
+                                        <option value="*">*</option>
+                                        <option value="/">/</option>
+                                        <option value="//">//</option>
+                                        <option value="%">%</option>
+                                        <option value="**">**</option>
+                                    </select>
+                                </div>
+                                <button id="calc-execute" class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200">
+                                    计算
+                                </button>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">结果</label>
+                                    <div id="calc-result" class="w-full p-2 border border-gray-300 rounded-md bg-white min-h-[50px]"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 文件操作工具 -->
+                        <div class="tool-card bg-purple-50 p-4 rounded-lg">
+                            <h3 class="font-semibold text-lg mb-3">文件操作</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">文件路径</label>
+                                    <input type="text" id="file-path" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="C:/example/file.txt">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">操作</label>
+                                    <select id="file-action" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                        <option value="read">读取文件</option>
+                                        <option value="list">列出目录</option>
+                                        <option value="info">文件信息</option>
+                                    </select>
+                                </div>
+                                <button id="file-execute" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200">
+                                    执行
+                                </button>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">结果</label>
+                                    <div id="file-result" class="w-full p-2 border border-gray-300 rounded-md bg-white min-h-[100px]"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 日期时间工具 -->
+                        <div class="tool-card bg-amber-50 p-4 rounded-lg">
+                            <h3 class="font-semibold text-lg mb-3">日期时间</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">操作</label>
+                                    <select id="date-action" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500">
+                                        <option value="current">当前时间</option>
+                                        <option value="format">格式化时间</option>
+                                        <option value="diff">时间差</option>
+                                    </select>
+                                </div>
+                                <div id="date-params" class="space-y-2">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">格式</label>
+                                        <input type="text" id="date-format" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500" value="%Y-%m-%d %H:%M:%S">
+                                    </div>
+                                </div>
+                                <button id="date-execute" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200">
+                                    执行
+                                </button>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">结果</label>
+                                    <div id="date-result" class="w-full p-2 border border-gray-300 rounded-md bg-white min-h-[50px]"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 终端 -->
+                <div class="card rounded-xl p-6 shadow-lg mt-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">服务终端</h2>
+                    <div class="terminal">
+                        <div class="terminal-header">
+                            <div class="terminal-dot dot-red"></div>
+                            <div class="terminal-dot dot-yellow"></div>
+                            <div class="terminal-dot dot-green"></div>
+                            <span class="text-sm text-gray-300 ml-2">MCP Server Terminal</span>
+                        </div>
+                        <div id="terminal-output" class="terminal-body">
+                            <div class="text-gray-400">// 服务终端输出</div>
+                        </div>
+                        <div class="terminal-header flex items-center">
+                            <span class="text-green-400 mr-2">$</span>
+                            <input type="text" id="terminal-input" class="command-input" placeholder="输入命令...">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 底部 -->
+        <div class="mt-8 text-center text-white/60 text-sm">
+            <p>© 2026 Cursor MCP 服务器管理工具</p>
+        </div>
+    </div>
+    
+    <script>
+        // 全局变量
+        let serverProcess = null;
+        let startTime = null;
+        let uptimeInterval = null;
+        
+        // DOM 元素
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusText = document.getElementById('status-text');
+        const startTimeEl = document.getElementById('start-time');
+        const uptimeEl = document.getElementById('uptime');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const terminalOutput = document.getElementById('terminal-output');
+        const terminalInput = document.getElementById('terminal-input');
+        
+        // 系统信息元素
+        const sysPlatform = document.getElementById('sys-platform');
+        const sysCpu = document.getElementById('sys-cpu');
+        const sysMemory = document.getElementById('sys-memory');
+        const sysDisk = document.getElementById('sys-disk');
+        
+        // 工具元素
+        const textInput = document.getElementById('text-input');
+        const textAction = document.getElementById('text-action');
+        const textExecute = document.getElementById('text-execute');
+        const textResult = document.getElementById('text-result');
+        
+        const num1 = document.getElementById('num1');
+        const num2 = document.getElementById('num2');
+        const operator = document.getElementById('operator');
+        const calcExecute = document.getElementById('calc-execute');
+        const calcResult = document.getElementById('calc-result');
+        
+        const filePath = document.getElementById('file-path');
+        const fileAction = document.getElementById('file-action');
+        const fileExecute = document.getElementById('file-execute');
+        const fileResult = document.getElementById('file-result');
+        
+        const dateAction = document.getElementById('date-action');
+        const dateParams = document.getElementById('date-params');
+        const dateFormat = document.getElementById('date-format');
+        const dateExecute = document.getElementById('date-execute');
+        const dateResult = document.getElementById('date-result');
+        
+        // 初始化
+        function init() {
+            loadSystemInfo();
+            setupEventListeners();
+            updateDateParams();
+        }
+        
+        // 加载系统信息
+        function loadSystemInfo() {
+            // 模拟系统信息
+            sysPlatform.textContent = 'Windows 10';
+            sysCpu.textContent = 'Intel Core i7-10700K';
+            sysMemory.textContent = '16 GB';
+            sysDisk.textContent = '512 GB SSD';
+        }
+        
+        // 设置事件监听器
+        function setupEventListeners() {
+            startBtn.addEventListener('click', startServer);
+            stopBtn.addEventListener('click', stopServer);
+            
+            terminalInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    executeCommand(terminalInput.value);
+                    terminalInput.value = '';
+                }
+            });
+            
+            // 文本工具
+            textExecute.addEventListener('click', executeTextTool);
+            
+            // 计算工具
+            calcExecute.addEventListener('click', executeCalcTool);
+            
+            // 文件工具
+            fileExecute.addEventListener('click', executeFileTool);
+            
+            // 日期工具
+            dateAction.addEventListener('change', updateDateParams);
+            dateExecute.addEventListener('click', executeDateTool);
+        }
+        
+        // 更新日期参数
+        function updateDateParams() {
+            const action = dateAction.value;
+            dateParams.innerHTML = '';
+            
+            if (action === 'current') {
+                dateParams.innerHTML = `
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">格式</label>
+                        <input type="text" id="date-format" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500" value="%Y-%m-%d %H:%M:%S">
+                    </div>
+                `;
+            } else if (action === 'format') {
+                dateParams.innerHTML = `
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">时间戳</label>
+                        <input type="number" id="date-timestamp" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500" value="${Date.now() / 1000}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">格式</label>
+                        <input type="text" id="date-format" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500" value="%Y-%m-%d %H:%M:%S">
+                    </div>
+                `;
+            } else if (action === 'diff') {
+                dateParams.innerHTML = `
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">开始时间</label>
+                        <input type="datetime-local" id="date-start" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">结束时间</label>
+                        <input type="datetime-local" id="date-end" class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    </div>
+                `;
+            }
+        }
+        
+        // 启动服务器
+        function startServer() {
+            if (serverProcess) return;
+            
+            // 模拟启动服务器
+            serverProcess = { pid: Math.floor(Math.random() * 10000) };
+            startTime = new Date();
+            
+            updateStatus(true);
+            startUptimeTimer();
+            addTerminalOutput('Starting MCP server...');
+            addTerminalOutput(`Server started with PID: ${serverProcess.pid}`);
+            addTerminalOutput('Ready to accept connections');
+        }
+        
+        // 停止服务器
+        function stopServer() {
+            if (!serverProcess) return;
+            
+            // 模拟停止服务器
+            serverProcess = null;
+            startTime = null;
+            
+            updateStatus(false);
+            stopUptimeTimer();
+            addTerminalOutput('Stopping MCP server...');
+            addTerminalOutput('Server stopped');
+        }
+        
+        // 更新状态
+        function updateStatus(online) {
+            if (online) {
+                statusIndicator.className = 'status-indicator status-online';
+                statusText.textContent = '在线';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                startTimeEl.textContent = startTime.toLocaleString();
+            } else {
+                statusIndicator.className = 'status-indicator status-offline';
+                statusText.textContent = '离线';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                startTimeEl.textContent = '未启动';
+                uptimeEl.textContent = '0秒';
+            }
+        }
+        
+        // 启动运行时间计时器
+        function startUptimeTimer() {
+            if (uptimeInterval) clearInterval(uptimeInterval);
+            
+            uptimeInterval = setInterval(() => {
+                if (!startTime) return;
+                const uptime = Math.floor((Date.now() - startTime.getTime()) / 1000);
+                uptimeEl.textContent = `${uptime}秒`;
+            }, 1000);
+        }
+        
+        // 停止运行时间计时器
+        function stopUptimeTimer() {
+            if (uptimeInterval) {
+                clearInterval(uptimeInterval);
+                uptimeInterval = null;
+            }
+        }
+        
+        // 添加终端输出
+        function addTerminalOutput(text) {
+            const timestamp = new Date().toLocaleTimeString();
+            const line = document.createElement('div');
+            line.innerHTML = `<span class="text-gray-400">[${timestamp}]</span> ${text}`;
+            terminalOutput.appendChild(line);
+            terminalOutput.scrollTop = terminalOutput.scrollHeight;
+        }
+        
+        // 执行命令
+        function executeCommand(command) {
+            addTerminalOutput(`$ ${command}`);
+            
+            // 模拟命令执行
+            setTimeout(() => {
+                if (command === 'help') {
+                    addTerminalOutput('Available commands:');
+                    addTerminalOutput('  status - Show server status');
+                    addTerminalOutput('  restart - Restart server');
+                    addTerminalOutput('  tools - List available tools');
+                    addTerminalOutput('  help - Show this help');
+                } else if (command === 'status') {
+                    addTerminalOutput(`Server status: ${serverProcess ? 'online' : 'offline'}`);
+                    if (serverProcess) {
+                        addTerminalOutput(`PID: ${serverProcess.pid}`);
+                        addTerminalOutput(`Uptime: ${Math.floor((Date.now() - startTime.getTime()) / 1000)} seconds`);
+                    }
+                } else if (command === 'tools') {
+                    addTerminalOutput('Available tools:');
+                    addTerminalOutput('  read_file, write_file, list_directory, get_file_info, search_files');
+                    addTerminalOutput('  get_system_info, get_disk_usage');
+                    addTerminalOutput('  calculate, text_stats, find_replace, hash_text');
+                    addTerminalOutput('  get_current_time, format_date, calculate_time_diff');
+                } else if (command === 'restart') {
+                    stopServer();
+                    setTimeout(startServer, 1000);
+                } else {
+                    addTerminalOutput(`Command not found: ${command}`);
+                }
+            }, 500);
+        }
+        
+        // 执行文本工具
+        function executeTextTool() {
+            const text = textInput.value;
+            const action = textAction.value;
+            
+            if (!text) {
+                textResult.textContent = '请输入文本';
+                return;
+            }
+            
+            // 模拟工具执行
+            setTimeout(() => {
+                if (action === 'stats') {
+                    const stats = {
+                        '字符数': text.length,
+                        '字符数(不含空格)': text.replace(/\s/g, '').length,
+                        '单词数': text.split(/\s+/).filter(word => word).length,
+                        '行数': text.split('\n').length,
+                        '段落数': text.split('\n\n').filter(p => p.trim()).length
+                    };
+                    textResult.innerHTML = JSON.stringify(stats, null, 2);
+                } else if (action === 'hash') {
+                    const hash = btoa(text); // 简单模拟哈希
+                    textResult.textContent = `Base64: ${hash}`;
+                } else if (action === 'replace') {
+                    textResult.textContent = '请在代码中实现查找替换功能';
+                }
+            }, 300);
+        }
+        
+        // 执行计算工具
+        function executeCalcTool() {
+            const a = parseFloat(num1.value);
+            const b = parseFloat(num2.value);
+            const op = operator.value;
+            
+            if (isNaN(a) || isNaN(b)) {
+                calcResult.textContent = '请输入有效的数字';
+                return;
+            }
+            
+            // 模拟计算
+            setTimeout(() => {
+                let result;
+                switch (op) {
+                    case '+': result = a + b; break;
+                    case '-': result = a - b; break;
+                    case '*': result = a * b; break;
+                    case '/': result = b === 0 ? '错误: 除数不能为零' : a / b; break;
+                    case '//': result = b === 0 ? '错误: 除数不能为零' : Math.floor(a / b); break;
+                    case '%': result = b === 0 ? '错误: 除数不能为零' : a % b; break;
+                    case '**': result = Math.pow(a, b); break;
+                    default: result = '错误: 不支持的运算符';
+                }
+                calcResult.textContent = result;
+            }, 200);
+        }
+        
+        // 执行文件工具
+        function executeFileTool() {
+            const path = filePath.value;
+            const action = fileAction.value;
+            
+            if (!path) {
+                fileResult.textContent = '请输入文件路径';
+                return;
+            }
+            
+            // 模拟文件操作
+            setTimeout(() => {
+                if (action === 'read') {
+                    fileResult.textContent = `模拟读取文件: ${path}\n文件内容示例...`;
+                } else if (action === 'list') {
+                    fileResult.textContent = `模拟列出目录: ${path}\n[DIR]  folder1\n[FILE] file1.txt (1024 bytes)\n[FILE] file2.py (2048 bytes)`;
+                } else if (action === 'info') {
+                    fileResult.textContent = `模拟文件信息: ${path}\n大小: 1024 bytes\n修改时间: 2026-04-20 12:00:00`;
+                }
+            }, 300);
+        }
+        
+        // 执行日期工具
+        function executeDateTool() {
+            const action = dateAction.value;
+            
+            // 模拟日期操作
+            setTimeout(() => {
+                if (action === 'current') {
+                    const format = document.getElementById('date-format').value || '%Y-%m-%d %H:%M:%S';
+                    dateResult.textContent = new Date().toLocaleString();
+                } else if (action === 'format') {
+                    const timestamp = parseFloat(document.getElementById('date-timestamp').value);
+                    dateResult.textContent = new Date(timestamp * 1000).toLocaleString();
+                } else if (action === 'diff') {
+                    const start = document.getElementById('date-start').value;
+                    const end = document.getElementById('date-end').value;
+                    if (!start || !end) {
+                        dateResult.textContent = '请输入开始和结束时间';
+                        return;
+                    }
+                    const startDate = new Date(start);
+                    const endDate = new Date(end);
+                    const diff = endDate - startDate;
+                    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    dateResult.textContent = `${days}天 ${hours}小时`;
+                }
+            }, 200);
+        }
+        
+        // 初始化
+        init();
+    </script>
+</body>
+</html>
